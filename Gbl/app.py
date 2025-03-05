@@ -10,7 +10,8 @@ from functools import wraps
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(BASE_DIR, 'shop.db')}"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://shop_wnmi_user:zTx5CesC62OirN9q14F2zLB8bdSDObrb@dpg-cv41hj52ng1s73dccsm0-a.oregon-postgres.render.com/shop_wnmi"
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
 
@@ -183,7 +184,7 @@ def view_cart(user_id):
         })
 
     return jsonify(items_with_details)
-
+                                                                                                                                                                                                                                                    
 @app.route('/cart/<int:user_id>/<int:product_id>', methods=['DELETE'])
 @token_required
 def remove_from_cart(user_id, product_id):

@@ -1,11 +1,11 @@
 from datetime import date, timedelta
-from app import db, User, Product, Cart, Deal, app  # Use 'Deal' instead of 'DealOfTheWeek'
+from app import db, User, Product, Cart,  app  # Use 'Deal' instead of 'DealOfTheWeek'
 
 
 with app.app_context():  # Ensure the script runs inside Flask's app context
     # Delete existing data in a safe order
     db.session.query(Cart).delete()
-    db.session.query(Deal).delete()
+
     db.session.query(Product).delete()
     db.session.query(User).delete()
     db.session.commit()
@@ -72,30 +72,6 @@ with app.app_context():  # Ensure the script runs inside Flask's app context
     db.session.add_all(cart_items)
     db.session.commit()
 
-    # Create mock "Deals of the Week"
-    # Create mock "Deals of the Week"
-    deals = [
-        Deal(  # Change from DealOfTheWeek to Deal
-            product_id=dj_controller.id,
-            discount_price=round(dj_controller.price * 0.8, 2),  # 20% discount
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=7)
-        ),
-        Deal(
-            product_id=keyboard.id,
-            discount_price=round(keyboard.price * 0.85, 2),  # 15% discount
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=7)
-        ),
-        Deal(
-            product_id=guitar.id,
-            discount_price=round(guitar.price * 0.75, 2),  # 25% discount
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=7)
-        )
-    ]
 
-    db.session.add_all(deals)
-    db.session.commit()
 
     print("Database seeded successfully, including 'Deals of the Week'!")
