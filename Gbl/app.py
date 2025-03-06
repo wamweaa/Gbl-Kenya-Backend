@@ -6,10 +6,16 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-
+from flask import send_from_directory
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
+
 app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://shop_wnmi_user:zTx5CesC62OirN9q14F2zLB8bdSDObrb@dpg-cv41hj52ng1s73dccsm0-a.oregon-postgres.render.com/shop_wnmi"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -20,9 +26,20 @@ bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
 
 CATEGORIES = [
-    "Piano", "Keyboards", "Guitars", "DJ Equipment",
-    "PA Equipment", "Drums", "Music Production",
-    "Audio & Visual", "Other"
+    "Microphone Accessories",
+    "CAPACITORS",
+    "Battery",
+    "Screw and Screw Drivers",
+    "Adaptor and Cables",
+    "Tweeter Coils",
+    "Speaker Spares Diaphragms",
+    "Caps and Spiders",
+    "Accessories",
+    "Multi Meter",
+    "Connectors",
+    "Fans",
+    "Converters",
+    "Others"
 ]
 
 # Models
@@ -70,6 +87,9 @@ def generate_token(user):
     }
     return jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -93,6 +113,15 @@ def admin_required(f):
             return jsonify({'error': 'Admin access required'}), 403
         return f(*args, **kwargs)
     return decorated
+
+
+@app.route('/')
+def serve():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def catch_all(path):
+    return send_from_directory(app.static_folder, 'index.html')
 
 # Auth Routes
 @app.route('/signup', methods=['POST'])
@@ -151,9 +180,15 @@ def modify_product(id):
         return jsonify({'message': 'Product updated successfully'}), 200
 
     elif request.method == 'DELETE':
-        db.session.delete(product)
-        db.session.commit()
-        return jsonify({'message': 'Product deleted successfully'}), 200
+        try:
+            db.session.delete(product)
+            db.session.commit()
+            return jsonify({'message': 'Product deleted successfully'}), 200
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error deleting product {id}: {e}")
+            return jsonify({'error': 'Failed to delete product'}), 500
+
 
 # Cart Routes
 @app.route('/cart', methods=['POST'])
@@ -207,6 +242,32 @@ def update_cart_item(user_id, product_id):
     cart_item.quantity = data['quantity']
     db.session.commit()
     return jsonify({'message': 'Cart item updated'}), 200
+
+@app.route('/upload-image', methods=['POST'])
+@admin_required
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image file provided'}), 400
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    # Create a unique filename
+    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(file_path)
+    
+    # Assuming images will be served from /uploads/
+    image_url = f'/uploads/{filename}'
+
+    return jsonify({'message': 'Image uploaded successfully', 'image_url': image_url}), 201
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # Admin Seeder
 def create_admin_accounts():
