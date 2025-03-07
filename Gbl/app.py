@@ -7,6 +7,8 @@ import jwt
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import send_from_directory
+from flask_migrate import Migrate
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
@@ -22,6 +24,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
 
@@ -342,6 +345,24 @@ def update_cart_item(user_id, product_id):
 @app.route('/categories', methods=['GET'])
 def get_categories():
     return jsonify(CATEGORIES), 200
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file and allowed_file(file.filename):
+        filename = file.filename
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        return jsonify({'message': 'File uploaded successfully', 'url': f'/uploads/{filename}'})
+    else:
+        return jsonify({'error': 'File type not allowed'}), 400
+    
+
 
 @app.route('/upload-image', methods=['POST'])
 @admin_required
