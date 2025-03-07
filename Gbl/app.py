@@ -16,7 +16,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://shop_wnmi_user:zTx5CesC62OirN9q14F2zLB8bdSDObrb@dpg-cv41hj52ng1s73dccsm0-a.oregon-postgres.render.com/shop_wnmi"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://neondb_owner:npg_CmQ1eKcfbi7P@ep-bold-shape-a8sgvun3-pooler.eastus2.azure.neon.tech/neondb?sslmode=require"
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
@@ -116,13 +116,13 @@ def admin_required(f):
 
 
 @app.route('/')
-def serve():
+def serve_index():
     return send_from_directory(app.static_folder, 'index.html')
 
+# Catch-all for all other routes and serve index.html
 @app.route('/<path:path>')
 def catch_all(path):
     return send_from_directory(app.static_folder, 'index.html')
-
 # Auth Routes
 @app.route('/signup', methods=['POST'])
 def signup():
