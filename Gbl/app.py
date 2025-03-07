@@ -23,6 +23,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://neondb_owner:npg_CmQ1eKcfb
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
 
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 bcrypt = Bcrypt(app)
@@ -260,10 +261,38 @@ def get_product_by_id(id):
 @app.route('/products', methods=['POST'])
 @admin_required
 def add_product():
-    data = request.get_json()
-    new_product = Product(**data)
+    name = request.form.get('name')
+    description = request.form.get('description')
+    price = request.form.get('price')
+    stock = request.form.get('stock')
+    category = request.form.get('category', 'Other')
+    subcategory = request.form.get('subcategory')
+
+    image_url = None
+
+    # Handle file upload
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and allowed_file(file.filename):
+            filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            image_url = f"/uploads/{filename}"
+
+    # Create and save product
+    new_product = Product(
+        name=name,
+        description=description,
+        price=float(price),
+        stock=int(stock),
+        category=category,
+        subcategory=subcategory,
+        image_url=image_url  # Save image URL
+    )
+    
     db.session.add(new_product)
     db.session.commit()
+
     return jsonify({'message': 'Product added successfully'}), 201
 
 @app.route('/products/<int:id>', methods=['PUT', 'DELETE'])
