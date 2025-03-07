@@ -242,28 +242,12 @@ def login():
 # Product Routes
 @app.route('/products', methods=['GET'])
 def list_products():
-    category = request.args.get('category', type=str)
-
+    category = request.args.get('category')
     query = Product.query
-
     if category:
-        query = query.filter(Product.category.ilike(f'%{category}%'))  # Case-insensitive search
-
-    try:
-        products = query.all()
-        return jsonify([product.to_dict() for product in products]), 200
-    except Exception as e:
-        return jsonify({'error': 'Failed to fetch products', 'details': str(e)}), 500
-    
-@app.route('/products', methods=['GET'])
-def get_products():
-    try:
-        products = Product.query.all()
-        product_list = [product.to_dict() for product in products]
-        return jsonify(product_list), 200
-    except Exception as e:
-        print(f"Error fetching products: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+        query = query.filter_by(category=category)
+    products = query.all()
+    return jsonify([product.to_dict() for product in products])
 
 @app.route('/products/<int:id>', methods=['GET'])
 def get_product_by_id(id):
