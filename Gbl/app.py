@@ -26,114 +26,20 @@ bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
 
 CATEGORIES = [
-    {
-        "name": "Speakers",
-        "subcategories": [
-            "Bass Speakers",
-            "Mid Bass Speakers",
-            "Neodymium Speakers",
-            "Mid Speakers"
-        ]
-    },
-    {
-        "name": "Amplifiers",
-        "subcategories": []
-    },
-    {
-        "name": "Mixers",
-        "subcategories": [
-            "Plain Mixers",
-            "Powered Mixers"
-        ]
-    },
-    {
-        "name": "Microphones",
-        "subcategories": [
-            "Wired Microphones",
-            "Wireless Microphones"
-        ]
-    },
-    {
-        "name": "Tweeters",
-        "subcategories": [
-            "Tweeter Drivers",
-            "Bullet Tweeter Drivers",
-            "Neodymium Tweeter Drivers"
-        ]
-    },
-    {
-        "name": "Crossover",
-        "subcategories": []
-    },
-    {
-        "name": "Stands",
-        "subcategories": [
-            "Microphone Stands",
-            "Speaker Stands"
-        ]
-    },
-    {
-        "name": "Guitars",
-        "subcategories": [
-            "Electric Guitars (Bass, Solo, Rhythm)",
-            "Semi-Acoustic Guitars",
-            "Box Guitars",
-            "Guitar Effects & Pedals"
-        ]
-    },
-    {
-        "name": "Spares and Accessories",
-        "subcategories": [
-            "Microphone Accessories",
-            "Capacitors",
-            "Battery",
-            "Screws and Screwdrivers",
-            "Adaptors and Cables",
-            "Tweeter Coils",
-            "Speaker Spares (Diaphragms)",
-            "Caps and Spiders",
-            "General Accessories",
-            "Multi Meter",
-            "Connectors",
-            "Fans",
-            "Converters",
-            "Others"
-        ]
-    },
-    {
-        "name": "Saxophones",
-        "subcategories": [
-            "Alto Saxophones - Silver (46k)",
-            "Alto Saxophones - Gold (42k)",
-            "Tenor Saxophones (49k)"
-        ]
-    },
-    {
-        "name": "Keyboards",
-        "subcategories": [
-            "Keyboard Models",
-            "Sustain Pedal"
-        ]
-    },
-    {
-        "name": "Drum Sets and Drum Accessories",
-        "subcategories": []
-    },
-    {
-        "name": "Speaker Cabinets",
-        "subcategories": [
-            "Midrange Cabinets",
-            "Full Range Cabinets",
-            "Bass Cabinets"
-        ]
-    },
-    {
-        "name": "Signal Processors",
-        "subcategories": [
-            "Equalizers",
-            "Crossovers"
-        ]
-    }
+    "Microphone Accessories",
+    "CAPACITORS",
+    "Battery",
+    "Screw and Screw Drivers",
+    "Adaptor and Cables",
+    "Tweeter Coils",
+    "Speaker Spares Diaphragms",
+    "Caps and Spiders",
+    "Accessories",
+    "Multi Meter",
+    "Connectors",
+    "Fans",
+    "Converters",
+    "Others"
 ]
 
 # Models
@@ -153,7 +59,6 @@ class Product(db.Model):
     stock = db.Column(db.Integer, nullable=False, default=0)
     category = db.Column(db.String(50), nullable=False, default="Other")
     sales_count = db.Column(db.Integer, default=0)
-    subcategory = db.Column(db.String(50), nullable=True)  # New field
 
     def to_dict(self):
         return {
@@ -163,8 +68,7 @@ class Product(db.Model):
             'price': self.price,
             'image_url': self.image_url,
             'stock': self.stock,
-            'category': self.category,
-            'subcategory': self.subcategory
+            'category': self.category
         }
 
 class Cart(db.Model):
@@ -338,10 +242,6 @@ def update_cart_item(user_id, product_id):
     cart_item.quantity = data['quantity']
     db.session.commit()
     return jsonify({'message': 'Cart item updated'}), 200
-
-@app.route('/categories', methods=['GET'])
-def get_categories():
-    return jsonify(CATEGORIES), 200
 
 @app.route('/upload-image', methods=['POST'])
 @admin_required
