@@ -12,7 +12,7 @@ from flask_migrate import Migrate
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static/uploads')
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -387,8 +387,7 @@ def upload_file():
         filename = file.filename
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        return jsonify({'message': 'File uploaded successfully', 'image_url': f'/uploads/{filename}'})
-
+        return jsonify({'message': 'File uploaded successfully', 'url': f'/uploads/{filename}'})
     else:
         return jsonify({'error': 'File type not allowed'}), 400
     
