@@ -387,7 +387,8 @@ def upload_file():
         filename = file.filename
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        return jsonify({'message': 'File uploaded successfully', 'url': f'/uploads/{filename}'})
+        return jsonify({'message': 'File uploaded successfully', 'image_url': f'/uploads/{filename}'})
+
     else:
         return jsonify({'error': 'File type not allowed'}), 400
     
