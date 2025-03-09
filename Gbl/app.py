@@ -280,10 +280,8 @@ def add_product():
     if 'image' in request.files:
         file = request.files['image']
         if file and allowed_file(file.filename):
-            filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
-            image_url = f"/uploads/{filename}"
+            upload_result = cloudinary.uploader.upload(file)
+            image_url = upload_result.get('secure_url')  # Get the Cloudinary URL
 
     # Create and save product
     new_product = Product(
