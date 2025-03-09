@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import send_from_directory
 from flask_migrate import Migrate
+import cloudinary
+import cloudinary.uploader
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -22,7 +24,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://neondb_owner:npg_CmQ1eKcfb
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
-
+cloudinary.config(
+    cloud_name="dpt8hh1wl",
+    api_key="422452375893439",
+    api_secret="vgnbC8kSSYCap3JuW1IC_uzmYe4"
+)
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -377,20 +383,19 @@ def get_categories():
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
+        return jsonify({'error': 'No file provided'}), 400
 
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
-    if file and allowed_file(file.filename):
-        filename = file.filename
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        return jsonify({'message': 'File uploaded successfully', 'url': f'/uploads/{filename}'})
-    else:
+    if not allowed_file(file.filename):
         return jsonify({'error': 'File type not allowed'}), 400
-    
+
+    # Upload to Cloudinary
+    result = cloudinary.uploader.upload(file)
+
+    return jsonify({'message': 'File uploaded successfully', 'url': result['secure_url']}), 201
 
 
 @app.route('/upload-image', methods=['POST'])
@@ -406,15 +411,10 @@ def upload_image():
     if not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file type'}), 400
 
-    # Create a unique filename
-    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(file_path)
-    
-    # Assuming images will be served from /uploads/
-    image_url = f'/uploads/{filename}'
+    # Upload to Cloudinary
+    result = cloudinary.uploader.upload(file)
 
-    return jsonify({'message': 'Image uploaded successfully', 'image_url': image_url}), 201
+    return jsonify({'message': 'Image uploaded successfully', 'image_url': result['secure_url']}), 201
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
