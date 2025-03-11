@@ -152,6 +152,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(10), nullable=False, default='user')
+    phonenumber = db.Column(db.String(15), unique=True, nullable=True)
     cart = db.relationship('Cart', backref='user', lazy=True)
 
 class Product(db.Model):
@@ -182,6 +183,14 @@ class Cart(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     quantity = db.Column(db.Integer, default=1)
+
+class ActivityLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    action = db.Column(db.String(255), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('activity_logs', lazy=True))
 
 # JWT Helpers
 def generate_token(user):
@@ -220,6 +229,12 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def log_activity(user_id, action):
+    new_log = ActivityLog(user_id=user_id, action=action)
+    db.session.add(new_log)
+    db.session.commit()
+
+
 
 @app.route('/')
 def serve_index():
@@ -230,14 +245,43 @@ def serve_index():
 def catch_all(path):
     return send_from_directory(app.static_folder, 'index.html')
 # Auth Routes
+import re  # Import regex module
+
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
+
+    # Validate required fields
+    if not all(k in data for k in ['username', 'password', 'phonenumber']):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Validate phone number format (allowing +2547XXXXXXXX or 07XXXXXXXX)
+    phone_pattern = re.compile(r"^(\+2547\d{8}|07\d{8})$")
+    if not phone_pattern.match(data['phonenumber']):
+        return jsonify({'error': 'Invalid phone number format. Use +2547XXXXXXXX or 07XXXXXXXX'}), 400
+
+    # Ensure username and phone number are unique
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'error': 'Username already exists'}), 400
+
+    if User.query.filter_by(phonenumber=data['phonenumber']).first():
+        return jsonify({'error': 'Phone number already registered'}), 400
+
+    # Hash the password
     hashed_pw = bcrypt.generate_password_hash(data['password']).decode('utf-8')
     role = data.get('role', 'user')
-    new_user = User(username=data['username'], password=hashed_pw, role=role)
+
+    # Create and save the new user
+    new_user = User(
+        username=data['username'],
+        password=hashed_pw,
+        phonenumber=data['phonenumber'],
+        role=role
+    )
+
     db.session.add(new_user)
     db.session.commit()
+    
     return jsonify({'message': 'User created successfully'}), 201
 
 @app.route('/login', methods=['POST'])
@@ -248,6 +292,25 @@ def login():
         token = generate_token(user)
         return jsonify({'message': 'Login successful', 'token': token, 'user_id': user.id, 'role': user.role}), 200
     return jsonify({'error': 'Invalid credentials'}), 401
+
+@app.route('/user/<int:user_id>', methods=['GET'])
+@token_required
+def get_user(user_id):
+    user = User.query.get_or_404(user_id)
+    return jsonify({
+        'id': user.id,
+        'username': user.username,
+        'role': user.role,
+        'phonenumber': user.phonenumber
+    }), 200
+@app.route('/users', methods=['GET'])
+@admin_required
+def get_users():
+    users = User.query.all()
+    return jsonify([
+        {'id': user.id, 'username': user.username, 'role': user.role, 'phonenumber': user.phonenumber}
+        for user in users
+    ]), 200
 
 # Product Routes
 @app.route('/products', methods=['GET'])
@@ -328,10 +391,16 @@ def modify_product(id):
 def add_to_cart():
     data = request.get_json()
     user_id = request.user['user_id']
+    
     new_cart_item = Cart(user_id=user_id, product_id=data['product_id'], quantity=data['quantity'])
     db.session.add(new_cart_item)
     db.session.commit()
+
+    # Log the activity
+    log_activity(user_id, f"Added product {data['product_id']} to cart (Quantity: {data['quantity']})")
+
     return jsonify({'message': 'Item added to cart'}), 201
+
 
 @app.route('/cart/<int:user_id>', methods=['GET'])
 @token_required
@@ -361,6 +430,10 @@ def remove_from_cart(user_id, product_id):
     cart_item = Cart.query.filter_by(user_id=user_id, product_id=product_id).first_or_404()
     db.session.delete(cart_item)
     db.session.commit()
+
+    # Log the activity
+    log_activity(user_id, f"Removed product {product_id} from cart")
+
     return jsonify({'message': 'Item removed from cart'}), 200
 
 @app.route('/cart/<int:user_id>/<int:product_id>', methods=['PUT'])
@@ -371,9 +444,15 @@ def update_cart_item(user_id, product_id):
 
     data = request.get_json()
     cart_item = Cart.query.filter_by(user_id=user_id, product_id=product_id).first_or_404()
+    old_quantity = cart_item.quantity
     cart_item.quantity = data['quantity']
     db.session.commit()
+
+    # Log the activity
+    log_activity(user_id, f"Updated cart item {product_id} from {old_quantity} to {data['quantity']}")
+
     return jsonify({'message': 'Cart item updated'}), 200
+
 
 @app.route('/categories', methods=['GET'])
 def get_categories():
@@ -417,6 +496,24 @@ def upload_image():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+
+
+@app.route('/activity-logs', methods=['GET'])
+@admin_required
+def get_activity_logs():
+    user_id = request.args.get('user_id')  # Optional filter for a specific user
+    query = ActivityLog.query
+
+    if user_id:
+        query = query.filter_by(user_id=user_id)
+
+    logs = query.order_by(ActivityLog.timestamp.desc()).all()
+    
+    return jsonify([
+        {'id': log.id, 'user_id': log.user_id, 'action': log.action, 'timestamp': log.timestamp}
+        for log in logs
+    ]), 200
+
 # Admin Seeder
 def create_admin_accounts():
     admins = [
@@ -431,7 +528,7 @@ def create_admin_accounts():
 
 with app.app_context():
     db.create_all()
-    create_admin_accounts()
-
+    # create_admin_accounts()
+    
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
