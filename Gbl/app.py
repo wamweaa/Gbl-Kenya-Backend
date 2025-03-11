@@ -177,6 +177,15 @@ class Product(db.Model):
             'category': self.category,
             'subcategory': self.subcategory
         }
+class Order(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    total_amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(50), default='Pending')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('orders', lazy=True))
 
 class Cart(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -514,6 +523,57 @@ def get_activity_logs():
         for log in logs
     ]), 200
 
+# Order Routes
+@app.route('/orders', methods=['GET'])
+@admin_required
+def get_orders():
+    orders = Order.query.all()
+    return jsonify([
+        {
+            'id': order.id,
+            'user_id': order.user_id,
+            'total_amount': order.total_amount,
+            'status': order.status,
+            'created_at': order.created_at,
+            'updated_at': order.updated_at
+        }
+        for order in orders
+    ]), 200
+
+@app.route('/orders/<int:order_id>', methods=['PUT'])
+@admin_required
+def update_order_status(order_id):
+    order = Order.query.get_or_404(order_id)
+    data = request.get_json()
+    order.status = data.get('status', order.status)
+    db.session.commit()
+    return jsonify({'message': 'Order status updated successfully'}), 200
+
+@app.route('/products/<int:id>/stock', methods=['PUT'])
+@admin_required
+def update_stock(id):
+    product = Product.query.get_or_404(id)
+    data = request.get_json()
+    product.stock = data.get('stock', product.stock)
+    db.session.commit()
+
+    # Log low stock alerts
+    if product.stock < 10:
+        log_activity(request.user['user_id'], f"Low stock alert for product {product.name} (ID: {product.id})")
+
+    return jsonify({'message': 'Stock updated successfully'}), 200
+
+@app.route('/sales-analytics', methods=['GET'])
+@admin_required
+def get_sales_analytics():
+    # Example: Total sales, top-selling products, etc.
+    total_sales = db.session.query(db.func.sum(Order.total_amount)).scalar() or 0
+    top_products = db.session.query(Product.name, db.func.sum(Order.total_amount)).join(Order).group_by(Product.name).order_by(db.func.sum(Order.total_amount).desc()).limit(5).all()
+
+    return jsonify({
+        'total_sales': total_sales,
+        'top_products': [{'name': name, 'total_sales': total} for name, total in top_products]
+    }), 200
 # Admin Seeder
 def create_admin_accounts():
     admins = [
