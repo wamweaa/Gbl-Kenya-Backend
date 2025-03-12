@@ -1,4 +1,7 @@
 from flask import Flask, request, jsonify
+import requests
+from flask import Flask, request, jsonify
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
@@ -10,7 +13,9 @@ from flask import send_from_directory
 from flask_migrate import Migrate
 import cloudinary
 import cloudinary.uploader
-
+from config import MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_CALLBACK_URL, MPESA_BASE_URL
+from your_module import get_mpesa_token  # Import the token function
+import base64
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
@@ -563,6 +568,86 @@ def update_stock(id):
 
     return jsonify({'message': 'Stock updated successfully'}), 200
 
+
+@app.route("/stk_push", methods=["POST"])
+def stk_push():
+    data = request.get_json()
+    phone = data.get("phone").replace("+", "").lstrip("0")
+    phone = f"254{phone}" if phone.startswith("7") else phone
+    amount = data.get("amount")
+
+    if not phone or not amount:
+        return jsonify({"error": "Phone number and amount are required"}), 400
+
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+
+    # Create Lipa Na M-Pesa password
+    password = base64.b64encode(f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()).decode()
+
+    # Get access token
+    access_token = get_mpesa_token()
+    if not access_token:
+        return jsonify({"error": "Failed to obtain M-Pesa token"}), 500
+
+    # Define STK Push API URL
+    stk_url = f"{MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest"
+
+    headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+    payload = {
+        "BusinessShortCode": MPESA_SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": "CustomerPayBillOnline",
+        "Amount": amount,
+        "PartyA": phone,
+        "PartyB": MPESA_SHORTCODE,
+        "PhoneNumber": phone,
+        "CallBackURL": MPESA_CALLBACK_URL,
+        "AccountReference": "Payment",
+        "TransactionDesc": "Order Payment"
+    }
+
+    response = requests.post(stk_url, json=payload, headers=headers)
+
+    return response.json()
+
+@app.route("/mpesa_callback", methods=["POST"])
+def mpesa_callback():
+    data = request.get_json()
+
+    if not data or "Body" not in data or "stkCallback" not in data["Body"]:
+        return jsonify({"error": "Invalid request format"}), 400
+
+    stk_callback = data["Body"]["stkCallback"]
+    result_code = stk_callback.get("ResultCode", -1)  # Default to error state
+    merchant_request_id = stk_callback.get("MerchantRequestID")
+    checkout_request_id = stk_callback.get("CheckoutRequestID")
+
+    if result_code == 0:
+        callback_metadata = stk_callback.get("CallbackMetadata", {}).get("Item", [])
+
+        # Extract payment details safely
+        amount = next((item["Value"] for item in callback_metadata if item.get("Name") == "Amount"), None)
+        phone = next((item["Value"] for item in callback_metadata if item.get("Name") == "PhoneNumber"), None)
+
+        if not amount or not phone:
+            return jsonify({"error": "Missing payment details"}), 400
+
+       
+        order = Order.query.filter_by(phone=phone).first()
+        if order:
+            order.status = "Paid"
+            db.session.commit()
+
+        return jsonify({"message": "Payment successful", "phone": phone, "amount": amount}), 200
+
+    return jsonify({"error": "Payment failed"}), 400
 @app.route('/sales-analytics', methods=['GET'])
 @admin_required
 def get_sales_analytics():
