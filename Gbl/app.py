@@ -16,13 +16,25 @@ import cloudinary.uploader
 from config import MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_CALLBACK_URL, MPESA_BASE_URL
 from your_module import get_mpesa_token  # Import the token function
 import base64
-
+from base64 import b64encode
+MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
+MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
+MPESA_SHORTCODE = "852648"
+MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
 MPESA_CALLBACK_URL = "https://gblkenya.com/mpesa_callback"
 MPESA_BASE_URL = "https://api.safaricom.co.ke"
 # MPESA_BASE_URL = "https://sandbox.safaricom.co.ke"
 
 
 
+mpesa_auth_url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+credentials = b64encode(f"{MPESA_CONSUMER_KEY}:{MPESA_CONSUMER_SECRET}".encode()).decode()
+headers = {"Authorization": f"Basic {credentials}"}
+
+response = requests.get(mpesa_auth_url, headers=headers)
+
+print("Response Code:", response.status_code)
+print("Response Body:", response.json())
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
