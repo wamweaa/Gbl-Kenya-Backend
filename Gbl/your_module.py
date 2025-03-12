@@ -10,19 +10,18 @@ def get_mpesa_token():
 
     try:
         response = requests.get(url, auth=HTTPBasicAuth(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
-
-        print("Response Status Code:", response.status_code)
-        print("Response Text:", response.text)
+        print(f"MPESA Token Request Status Code: {response.status_code}")
+        print(f"MPESA Token Response: {response.text}")  # Log the full response for debugging
 
         if response.status_code == 200:
             return response.json().get("access_token")
 
-        print("Failed to get token:", response.json())
         return None
 
     except Exception as e:
-        print(f"Exception occurred: {str(e)}")
+        print(f"Exception occurred in get_mpesa_token: {str(e)}")
         return None
+
 
 # ✅ **Test the function**
 token = get_mpesa_token()
