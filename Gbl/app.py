@@ -16,16 +16,18 @@ import cloudinary.uploader
 from config import MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_CALLBACK_URL, MPESA_BASE_URL
 from your_module import get_mpesa_token  # Import the token function
 import base64
-MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
-MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
-MPESA_SHORTCODE = "852648"
-MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
+
 MPESA_CALLBACK_URL = "https://gblkenya.com/mpesa_callback"
 MPESA_BASE_URL = "https://api.safaricom.co.ke"
+# MPESA_BASE_URL = "https://sandbox.safaricom.co.ke"
+
 
 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+password = base64.b64encode(f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()).decode()
 
 app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
@@ -584,6 +586,7 @@ def stk_push():
         data = request.get_json()
         phone = data.get("phone").replace("+", "").lstrip("0")
         phone = f"254{phone}" if phone.startswith("7") else phone
+
         amount = data.get("amount")
 
         if not phone or not amount:
@@ -691,6 +694,8 @@ def create_admin_accounts():
 with app.app_context():
     db.create_all()
     # create_admin_accounts()
-    
+
+print(f"Generated Password: {password}")
+print(f"Timestamp: {timestamp}")
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
