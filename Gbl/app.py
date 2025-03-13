@@ -13,6 +13,7 @@ import cloudinary.uploader
 import requests
 import base64
 from datetime import datetime
+from requests.auth import HTTPBasicAuth
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -41,7 +42,10 @@ CORS(app, supports_credentials=True)
 # MPESA API Credentials
 MPESA_SHORTCODE = "174379"
 MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
+MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
+MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
 MPESA_BASE_URL = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+MPESA_TOKEN_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
 MPESA_CALLBACK_URL = "https://mydomain.com/path"
 
 CATEGORIES = [
@@ -253,6 +257,16 @@ def log_activity(user_id, action):
     db.session.commit()
 
 # Function to generate the password dynamically
+# Function to get a fresh MPESA access token
+def get_mpesa_token():
+    response = requests.get(MPESA_TOKEN_URL, auth=HTTPBasicAuth(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
+    
+    if response.status_code == 200:
+        return response.json().get("access_token")
+    print("Error fetching token:", response.json())
+    return None
+
+# Function to generate the password dynamically
 def generate_password():
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
@@ -267,6 +281,11 @@ def stk_push():
 
     if not phone_number or not amount:
         return jsonify({"error": "Missing phone number or amount"}), 400
+
+    # Get a fresh MPESA token
+    token = get_mpesa_token()
+    if not token:
+        return jsonify({"error": "Failed to retrieve MPESA token"}), 500
 
     password, timestamp = generate_password()
     
@@ -286,13 +305,12 @@ def stk_push():
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer 8plvYdCa2oQ0mmoq5HW8grdRKwxS"
+        "Authorization": f"Bearer {token}"
     }
 
     response = requests.post(MPESA_BASE_URL, json=payload, headers=headers)
 
     return jsonify(response.json()), response.status_code
-
 
 @app.route('/')
 def serve_index():
