@@ -40,13 +40,28 @@ bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
 
 # MPESA API Credentials
-MPESA_SHORTCODE = "174379"
+MPESA_SHORTCODE = "852648"
 MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
 MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
 MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
-MPESA_BASE_URL = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-MPESA_TOKEN_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-MPESA_CALLBACK_URL = "https://mydomain.com/path"
+MPESA_BASE_URL = "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+MPESA_TOKEN_URL = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+MPESA_CALLBACK_URL = "https://gbl-kenya-backend.onrender.com/path"
+
+SAFARICOM_WHITELISTED_IPS = [
+    "196.201.214.200",
+    "196.201.214.206",
+    "196.201.213.114",
+    "196.201.214.207",
+    "196.201.214.208",
+    "196.201.213.44",
+    "196.201.212.127",
+    "196.201.212.138",
+    "196.201.212.129",
+    "196.201.212.136",
+    "196.201.212.74",
+    "196.201.212.69"
+]
 
 CATEGORIES = [
     {
@@ -320,8 +335,19 @@ def stk_push():
     response = requests.post(MPESA_BASE_URL, json=payload, headers=headers)
 
     return jsonify(response.json()), response.status_code
-@app.route("/mpesa_callback", methods=["POST"])
-def mpesa_callback():
+
+@app.route("/mpesa_callback/<security_key>", methods=["POST"])
+def mpesa_callback(security_key):
+    # Validate security key
+    if security_key != os.getenv("MPESA_CALLBACK_SECRET_KEY"):
+        return jsonify({"error": "Unauthorized access"}), 403
+
+    # Get client IP address
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+
+    if client_ip not in SAFARICOM_WHITELISTED_IPS:
+        return jsonify({"error": "IP not whitelisted"}), 403
+
     data = request.get_json()
     
     if not data:
@@ -370,6 +396,7 @@ def mpesa_callback():
     except Exception as e:
         print("Error processing M-Pesa callback:", str(e))
         return jsonify({"error": "Server error processing callback"}), 500
+
 @app.route("/payments", methods=["GET"])
 def get_payments():
     payments = Payment.query.order_by(Payment.timestamp.desc()).all()
