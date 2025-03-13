@@ -1,7 +1,4 @@
 from flask import Flask, request, jsonify
-import requests
-from flask import Flask, request, jsonify
-
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
@@ -13,12 +10,18 @@ from flask import send_from_directory
 from flask_migrate import Migrate
 import cloudinary
 import cloudinary.uploader
-from requests.auth import HTTPBasicAuth
-from config import MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_SHORTCODE, MPESA_PASSKEY, MPESA_CALLBACK_URL, MPESA_BASE_URL
-from your_module import get_mpesa_token  # Import the token function
+from config import MPESA_SHORTCODE, MPESA_PASSKEY, CALLBACK_URL
+from mpesa_utils import get_access_token
 import base64
+from datetime import datetime     
+from dotenv import load_dotenv
 
+import requests
+load_dotenv()
 
+# Retrieve values
+MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE")
+MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
@@ -252,50 +255,6 @@ def log_activity(user_id, action):
     db.session.commit()
 
 
-def get_mpesa_token():
-    url = f"{MPESA_BASE_URL}/oauth/v1/generate?grant_type=client_credentials"
-    try:
-        response = requests.get(url, auth=HTTPBasicAuth(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
-        if response.status_code == 200:
-            return response.json().get("access_token")
-        print("Error fetching token:", response.json())
-        return None
-    except Exception as e:
-        print(f"Exception in get_mpesa_token: {e}")
-        return None
-
-@app.route("/stk_push", methods=["POST"])
-def stk_push():
-    data = request.get_json()
-    phone_number = data.get("phone_number")
-    amount = data.get("amount")
-    
-    token = get_mpesa_token()
-    if not token:
-        return jsonify({"error": "Failed to retrieve MPESA token"}), 500
-
-    timestamp = "20240312010101"  # Use dynamic timestamp in production
-    password = base64.b64encode(f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()).decode()
-
-    payload = {
-        "BusinessShortCode": MPESA_SHORTCODE,
-        "Password": password,
-        "Timestamp": timestamp,
-        "TransactionType": "CustomerPayBillOnline",
-        "Amount": amount,
-        "PartyA": phone_number,
-        "PartyB": MPESA_SHORTCODE,
-        "PhoneNumber": phone_number,
-        "CallBackURL": MPESA_CALLBACK_URL,
-        "AccountReference": "GBLShop",
-        "TransactionDesc": "Payment for Order"
-    }
-    
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    response = requests.post(f"{MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest", json=payload, headers=headers)
-    
-    return jsonify(response.json()), response.status_code
-
 
 @app.route('/')
 def serve_index():
@@ -307,6 +266,52 @@ def catch_all(path):
     return send_from_directory(app.static_folder, 'index.html')
 # Auth Routes
 import re  # Import regex module
+
+@app.route('/stk_push', methods=['POST'])
+def stk_push():
+    data = request.get_json()
+    phone_number = data.get("phone")
+    amount = data.get("amount")
+
+    if not phone_number or not amount:
+        return jsonify({"error": "Phone number and amount are required"}), 400
+
+    access_token = get_access_token()
+    
+    # Generate password
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S') 
+    
+    password = base64.b64encode((MPESA_SHORTCODE + MPESA_PASSKEY + timestamp).encode()).decode('utf-8')
+    print(f"timestamp: {timestamp}")
+    url = "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+    # https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest
+
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "BusinessShortCode": MPESA_SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": "CustomerPayBillOnline",
+        "Amount": amount,
+        "PartyA": phone_number,
+        "PartyB": MPESA_SHORTCODE,
+        "PhoneNumber": phone_number,
+        "CallBackURL": CALLBACK_URL,
+        "AccountReference": "OnlineCourse",
+        "TransactionDesc": "Course Payment"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    return response.json()
+
+print(f"MPESA_SHORTCODE: {MPESA_SHORTCODE}")
+print(f"MPESA_PASSKEY: {MPESA_PASSKEY}")
+
 
 @app.route('/signup', methods=['POST'])
 def signup():
@@ -615,96 +620,6 @@ def update_stock(id):
 
     return jsonify({'message': 'Stock updated successfully'}), 200
 
-
-# @app.route("/stk_push", methods=["POST"])
-# def stk_push():
-#     try:
-#         data = request.get_json()
-#         phone = data.get("phone").replace("+", "").lstrip("0")
-#         phone = f"254{phone}" if phone.startswith("7") else phone
-#         amount = data.get("amount")
-
-#         if not phone or not amount:
-#             return jsonify({"error": "Phone number and amount are required"}), 400
-
-#         # Generate timestamp
-#         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-
-#         # Create Lipa Na M-Pesa password
-#         password = base64.b64encode(f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}".encode()).decode()
-
-#         # Get access token
-#         access_token = get_mpesa_token()
-#         if not access_token:
-#             print("Failed to obtain M-Pesa token")
-#             return jsonify({"error": "Failed to obtain M-Pesa token"}), 500
-
-#         # Define STK Push API URL
-#         stk_url = f"{MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest"
-
-#         headers = {
-#             "Authorization": f"Bearer {access_token}",
-#             "Content-Type": "application/json",
-#             "Accept": "application/json"
-#         }
-
-#         payload = {
-#             "BusinessShortCode": MPESA_SHORTCODE,
-#             "Password": password,
-#             "Timestamp": timestamp,
-#             "TransactionType": "CustomerPayBillOnline",
-#             "Amount": amount,
-#             "PartyA": phone,
-#             "PartyB": MPESA_SHORTCODE,
-#             "PhoneNumber": phone,
-#             "CallBackURL": MPESA_CALLBACK_URL,
-#             "AccountReference": "Payment",
-#             "TransactionDesc": "Order Payment"
-#         }
-
-#         response = requests.post(stk_url, json=payload, headers=headers)
-#         print(f"STK Push Response Code: {response.status_code}")
-#         print(f"STK Push Response Body: {response.text}")
-
-        
-#         return response.json()
-
-#     except Exception as e:
-#         print(f"Exception in /stk_push: {str(e)}")
-#         return jsonify({"error": "An unexpected error occurred"}), 500
-    
-
-@app.route("/mpesa_callback", methods=["POST"])
-def mpesa_callback():
-    data = request.get_json()
-
-    if not data or "Body" not in data or "stkCallback" not in data["Body"]:
-        return jsonify({"error": "Invalid request format"}), 400
-
-    stk_callback = data["Body"]["stkCallback"]
-    result_code = stk_callback.get("ResultCode", -1)  # Default to error state
-    merchant_request_id = stk_callback.get("MerchantRequestID")
-    checkout_request_id = stk_callback.get("CheckoutRequestID")
-
-    if result_code == 0:
-        callback_metadata = stk_callback.get("CallbackMetadata", {}).get("Item", [])
-
-        # Extract payment details safely
-        amount = next((item["Value"] for item in callback_metadata if item.get("Name") == "Amount"), None)
-        phone = next((item["Value"] for item in callback_metadata if item.get("Name") == "PhoneNumber"), None)
-
-        if not amount or not phone:
-            return jsonify({"error": "Missing payment details"}), 400
-
-       
-        order = Order.query.filter_by(phone=phone).first()
-        if order:
-            order.status = "Paid"
-            db.session.commit()
-
-        return jsonify({"message": "Payment successful", "phone": phone, "amount": amount}), 200
-
-    return jsonify({"error": "Payment failed"}), 400
 @app.route('/sales-analytics', methods=['GET'])
 @admin_required
 def get_sales_analytics():
@@ -727,6 +642,7 @@ def create_admin_accounts():
             hashed_pw = bcrypt.generate_password_hash(admin['password']).decode('utf-8')
             db.session.add(User(username=admin['username'], password=hashed_pw, role='admin'))
     db.session.commit()
+
 
 with app.app_context():
     db.create_all()
