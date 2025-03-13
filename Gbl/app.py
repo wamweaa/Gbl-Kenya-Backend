@@ -19,6 +19,42 @@ from dotenv import load_dotenv
 import requests
 load_dotenv()
 
+MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
+MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
+MPESA_SHORTCODE = "852648"
+MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
+MPESA_CALLBACK_URL = "https://gblkenya.com/mpesa_callback"
+MPESA_BASE_URL = "https://api.safaricom.co.ke"
+
+
+def get_access_token():
+    url = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+
+    try:
+        response = requests.get(url, auth=(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
+
+        # ✅ Check if request was successful
+        if response.status_code == 200:
+            try:
+                access_token = response.json().get("access_token")
+                if access_token:
+                    print("✅ Access Token Retrieved Successfully!")
+                    return access_token
+                else:
+                    print("❌ Error: No access token in response.")
+                    print("Response:", response.text)
+                    return None
+            except requests.exceptions.JSONDecodeError:
+                print("❌ JSON Decode Error: Could not parse response.")
+                print("Response text:", response.text)
+                return None
+        else:
+            print(f"❌ Error {response.status_code}: {response.text}")
+            return None
+
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network Error: {e}")
+        return None
 # Retrieve values
 MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE")
 MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
