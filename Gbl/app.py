@@ -167,7 +167,15 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default='user')
     phonenumber = db.Column(db.String(15), unique=True, nullable=True)
     cart = db.relationship('Cart', backref='user', lazy=True)
-
+class Payment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number = db.Column(db.String(20), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    merchant_request_id = db.Column(db.String(100), unique=True, nullable=False)
+    checkout_request_id = db.Column(db.String(100), unique=True, nullable=False)
+    result_desc = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(20), nullable=False)  # Success or Failed
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -190,6 +198,7 @@ class Product(db.Model):
             'category': self.category,
             'subcategory': self.subcategory
         }
+
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -311,6 +320,70 @@ def stk_push():
     response = requests.post(MPESA_BASE_URL, json=payload, headers=headers)
 
     return jsonify(response.json()), response.status_code
+@app.route("/mpesa_callback", methods=["POST"])
+def mpesa_callback():
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "Invalid response"}), 400
+
+    try:
+        body = data.get("Body", {}).get("stkCallback", {})
+        result_code = body.get("ResultCode")
+        result_desc = body.get("ResultDesc")
+        merchant_request_id = body.get("MerchantRequestID")
+        checkout_request_id = body.get("CheckoutRequestID")
+
+        if result_code == 0:
+            amount = body.get("CallbackMetadata", {}).get("Item", [])[0].get("Value")
+            phone_number = body.get("CallbackMetadata", {}).get("Item", [])[4].get("Value")
+
+            # Save payment details to database
+            payment = Payment(
+                phone_number=phone_number,
+                amount=amount,
+                merchant_request_id=merchant_request_id,
+                checkout_request_id=checkout_request_id,
+                result_desc=result_desc,
+                status="Success"
+            )
+            db.session.add(payment)
+            db.session.commit()
+
+            return jsonify({"message": "Payment recorded successfully"}), 200
+
+        else:
+            # Save failed transaction
+            payment = Payment(
+                phone_number="N/A",
+                amount=0,
+                merchant_request_id=merchant_request_id,
+                checkout_request_id=checkout_request_id,
+                result_desc=result_desc,
+                status="Failed"
+            )
+            db.session.add(payment)
+            db.session.commit()
+
+            return jsonify({"error": "Payment failed", "result_desc": result_desc}), 400
+
+    except Exception as e:
+        print("Error processing M-Pesa callback:", str(e))
+        return jsonify({"error": "Server error processing callback"}), 500
+@app.route("/payments", methods=["GET"])
+def get_payments():
+    payments = Payment.query.order_by(Payment.timestamp.desc()).all()
+    payments_list = [
+        {
+            "id": p.id,
+            "phone_number": p.phone_number,
+            "amount": p.amount,
+            "status": p.status,
+            "timestamp": p.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        for p in payments
+    ]
+    return jsonify(payments_list), 200
 
 @app.route('/')
 def serve_index():
