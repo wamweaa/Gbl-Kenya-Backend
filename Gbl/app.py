@@ -10,54 +10,10 @@ from flask import send_from_directory
 from flask_migrate import Migrate
 import cloudinary
 import cloudinary.uploader
-from config import MPESA_SHORTCODE, MPESA_PASSKEY, CALLBACK_URL
-from mpesa_utils import get_access_token
-import base64
-from datetime import datetime     
-from dotenv import load_dotenv
-
 import requests
-load_dotenv()
+import base64
+from datetime import datetime
 
-MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
-MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
-MPESA_SHORTCODE = "852648"
-MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
-MPESA_CALLBACK_URL = "https://gblkenya.com/mpesa_callback"
-MPESA_BASE_URL = "https://api.safaricom.co.ke"
-
-
-def get_access_token():
-    url = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-
-    try:
-        response = requests.get(url, auth=(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
-
-        # ✅ Check if request was successful
-        if response.status_code == 200:
-            try:
-                access_token = response.json().get("access_token")
-                if access_token:
-                    print("✅ Access Token Retrieved Successfully!")
-                    return access_token
-                else:
-                    print("❌ Error: No access token in response.")
-                    print("Response:", response.text)
-                    return None
-            except requests.exceptions.JSONDecodeError:
-                print("❌ JSON Decode Error: Could not parse response.")
-                print("Response text:", response.text)
-                return None
-        else:
-            print(f"❌ Error {response.status_code}: {response.text}")
-            return None
-
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network Error: {e}")
-        return None
-# Retrieve values
-MPESA_SHORTCODE = os.getenv("MPESA_SHORTCODE")
-MPESA_PASSKEY = os.getenv("MPESA_PASSKEY")
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
@@ -81,6 +37,12 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
+
+# MPESA API Credentials
+MPESA_SHORTCODE = "174379"
+MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
+MPESA_BASE_URL = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+MPESA_CALLBACK_URL = "https://mydomain.com/path"
 
 CATEGORIES = [
     {
@@ -290,6 +252,46 @@ def log_activity(user_id, action):
     db.session.add(new_log)
     db.session.commit()
 
+# Function to generate the password dynamically
+def generate_password():
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
+    password = base64.b64encode(password_str.encode()).decode()
+    return password, timestamp
+
+@app.route("/stk_push", methods=["POST"])
+def stk_push():
+    data = request.get_json()
+    phone_number = data.get("phone_number")
+    amount = data.get("amount")
+
+    if not phone_number or not amount:
+        return jsonify({"error": "Missing phone number or amount"}), 400
+
+    password, timestamp = generate_password()
+    
+    payload = {
+        "BusinessShortCode": MPESA_SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": "CustomerPayBillOnline",
+        "Amount": amount,
+        "PartyA": phone_number,
+        "PartyB": MPESA_SHORTCODE,
+        "PhoneNumber": phone_number,
+        "CallBackURL": MPESA_CALLBACK_URL,
+        "AccountReference": "CompanyXLTD",
+        "TransactionDesc": "Payment of X"
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer 8plvYdCa2oQ0mmoq5HW8grdRKwxS"
+    }
+
+    response = requests.post(MPESA_BASE_URL, json=payload, headers=headers)
+
+    return jsonify(response.json()), response.status_code
 
 
 @app.route('/')
@@ -302,52 +304,6 @@ def catch_all(path):
     return send_from_directory(app.static_folder, 'index.html')
 # Auth Routes
 import re  # Import regex module
-
-@app.route('/stk_push', methods=['POST'])
-def stk_push():
-    data = request.get_json()
-    phone_number = data.get("phone")
-    amount = data.get("amount")
-
-    if not phone_number or not amount:
-        return jsonify({"error": "Phone number and amount are required"}), 400
-
-    access_token = get_access_token()
-    
-    # Generate password
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S') 
-    
-    password = base64.b64encode((MPESA_SHORTCODE + MPESA_PASSKEY + timestamp).encode()).decode('utf-8')
-    print(f"timestamp: {timestamp}")
-    url = "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-    # https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest
-
-    
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "BusinessShortCode": MPESA_SHORTCODE,
-        "Password": password,
-        "Timestamp": timestamp,
-        "TransactionType": "CustomerPayBillOnline",
-        "Amount": amount,
-        "PartyA": phone_number,
-        "PartyB": MPESA_SHORTCODE,
-        "PhoneNumber": phone_number,
-        "CallBackURL": CALLBACK_URL,
-        "AccountReference": "OnlineCourse",
-        "TransactionDesc": "Course Payment"
-    }
-
-    response = requests.post(url, json=payload, headers=headers)
-    return response.json()
-
-print(f"MPESA_SHORTCODE: {MPESA_SHORTCODE}")
-print(f"MPESA_PASSKEY: {MPESA_PASSKEY}")
-
 
 @app.route('/signup', methods=['POST'])
 def signup():
@@ -678,7 +634,6 @@ def create_admin_accounts():
             hashed_pw = bcrypt.generate_password_hash(admin['password']).decode('utf-8')
             db.session.add(User(username=admin['username'], password=hashed_pw, role='admin'))
     db.session.commit()
-
 
 with app.app_context():
     db.create_all()
