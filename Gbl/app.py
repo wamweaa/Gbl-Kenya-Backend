@@ -10,10 +10,6 @@ from flask import send_from_directory
 from flask_migrate import Migrate
 import cloudinary
 import cloudinary.uploader
-import requests
-import base64
-from datetime import datetime
-from requests.auth import HTTPBasicAuth
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -38,30 +34,6 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
-
-# MPESA API Credentials
-MPESA_SHORTCODE = "852648"
-MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
-MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
-MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
-MPESA_BASE_URL = "https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-MPESA_TOKEN_URL = "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-MPESA_CALLBACK_URL = "https://gbl-kenya-backend.onrender.com/path"
-
-SAFARICOM_WHITELISTED_IPS = [
-    "196.201.214.200",
-    "196.201.214.206",
-    "196.201.213.114",
-    "196.201.214.207",
-    "196.201.214.208",
-    "196.201.213.44",
-    "196.201.212.127",
-    "196.201.212.138",
-    "196.201.212.129",
-    "196.201.212.136",
-    "196.201.212.74",
-    "196.201.212.69"
-]
 
 CATEGORIES = [
     {
@@ -182,15 +154,7 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default='user')
     phonenumber = db.Column(db.String(15), unique=True, nullable=True)
     cart = db.relationship('Cart', backref='user', lazy=True)
-class Payment(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    phone_number = db.Column(db.String(20), nullable=False)
-    amount = db.Column(db.Float, nullable=False)
-    merchant_request_id = db.Column(db.String(100), unique=True, nullable=False)
-    checkout_request_id = db.Column(db.String(100), unique=True, nullable=False)
-    result_desc = db.Column(db.String(255), nullable=True)
-    status = db.Column(db.String(20), nullable=False)  # Success or Failed
-    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -213,7 +177,6 @@ class Product(db.Model):
             'category': self.category,
             'subcategory': self.subcategory
         }
-
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -280,137 +243,7 @@ def log_activity(user_id, action):
     db.session.add(new_log)
     db.session.commit()
 
-# Function to generate the password dynamically
-# Function to get a fresh MPESA access token
-def get_mpesa_token():
-    response = requests.get(MPESA_TOKEN_URL, auth=HTTPBasicAuth(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
-    
-    if response.status_code == 200:
-        return response.json().get("access_token")
-    print("Error fetching token:", response.json())
-    return None
 
-# Function to generate the password dynamically
-def generate_password():
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
-    password = base64.b64encode(password_str.encode()).decode()
-    return password, timestamp
-
-@app.route("/stk_push", methods=["POST"])
-def stk_push():
-    data = request.get_json()
-    phone_number = data.get("phone_number")
-    amount = data.get("amount")
-
-    if not phone_number or not amount:
-        return jsonify({"error": "Missing phone number or amount"}), 400
-
-    # Get a fresh MPESA token
-    token = get_mpesa_token()
-    if not token:
-        return jsonify({"error": "Failed to retrieve MPESA token"}), 500
-
-    password, timestamp = generate_password()
-    
-    payload = {
-        "BusinessShortCode": MPESA_SHORTCODE,
-        "Password": password,
-        "Timestamp": timestamp,
-        "TransactionType": "CustomerPayBillOnline",
-        "Amount": amount,
-        "PartyA": phone_number,
-        "PartyB": MPESA_SHORTCODE,
-        "PhoneNumber": phone_number,
-        "CallBackURL": MPESA_CALLBACK_URL,
-        "AccountReference": "CompanyXLTD",
-        "TransactionDesc": "Payment of X"
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-
-    response = requests.post(MPESA_BASE_URL, json=payload, headers=headers)
-
-    return jsonify(response.json()), response.status_code
-
-@app.route("/mpesa_callback/<security_key>", methods=["POST"])
-def mpesa_callback(security_key):
-    # Validate security key
-    if security_key != os.getenv("MPESA_CALLBACK_SECRET_KEY"):
-        return jsonify({"error": "Unauthorized access"}), 403
-
-    # Get client IP address
-    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-
-    if client_ip not in SAFARICOM_WHITELISTED_IPS:
-        return jsonify({"error": "IP not whitelisted"}), 403
-
-    data = request.get_json()
-    
-    if not data:
-        return jsonify({"error": "Invalid response"}), 400
-
-    try:
-        body = data.get("Body", {}).get("stkCallback", {})
-        result_code = body.get("ResultCode")
-        result_desc = body.get("ResultDesc")
-        merchant_request_id = body.get("MerchantRequestID")
-        checkout_request_id = body.get("CheckoutRequestID")
-
-        if result_code == 0:
-            amount = body.get("CallbackMetadata", {}).get("Item", [])[0].get("Value")
-            phone_number = body.get("CallbackMetadata", {}).get("Item", [])[4].get("Value")
-
-            # Save payment details to database
-            payment = Payment(
-                phone_number=phone_number,
-                amount=amount,
-                merchant_request_id=merchant_request_id,
-                checkout_request_id=checkout_request_id,
-                result_desc=result_desc,
-                status="Success"
-            )
-            db.session.add(payment)
-            db.session.commit()
-
-            return jsonify({"message": "Payment recorded successfully"}), 200
-
-        else:
-            # Save failed transaction
-            payment = Payment(
-                phone_number="N/A",
-                amount=0,
-                merchant_request_id=merchant_request_id,
-                checkout_request_id=checkout_request_id,
-                result_desc=result_desc,
-                status="Failed"
-            )
-            db.session.add(payment)
-            db.session.commit()
-
-            return jsonify({"error": "Payment failed", "result_desc": result_desc}), 400
-
-    except Exception as e:
-        print("Error processing M-Pesa callback:", str(e))
-        return jsonify({"error": "Server error processing callback"}), 500
-
-@app.route("/payments", methods=["GET"])
-def get_payments():
-    payments = Payment.query.order_by(Payment.timestamp.desc()).all()
-    payments_list = [
-        {
-            "id": p.id,
-            "phone_number": p.phone_number,
-            "amount": p.amount,
-            "status": p.status,
-            "timestamp": p.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        }
-        for p in payments
-    ]
-    return jsonify(payments_list), 200
 
 @app.route('/')
 def serve_index():
