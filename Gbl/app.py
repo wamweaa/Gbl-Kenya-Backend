@@ -11,6 +11,7 @@ from flask_migrate import Migrate
 import cloudinary
 import cloudinary.uploader
 import stripe
+from mpesa import initiate_stk_push  # Import MPESA functions
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
@@ -184,7 +185,18 @@ class Cart(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     quantity = db.Column(db.Integer, default=1)
+    
+@app.route("/stk_push", methods=["POST"])
+def stk_push():
+    data = request.get_json()
+    phone_number = data.get("phone_number")
+    amount = data.get("amount")
 
+    if not phone_number or not amount:
+        return jsonify({"error": "Missing phone number or amount"}), 400
+
+    response, status_code = initiate_stk_push(phone_number, amount)
+    return jsonify(response), status_code
 class ActivityLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
