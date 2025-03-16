@@ -10,13 +10,10 @@ from flask import send_from_directory
 from flask_migrate import Migrate
 import cloudinary
 import cloudinary.uploader
-import requests
-import base64
-from datetime import datetime
-from requests.auth import HTTPBasicAuth
+import stripe
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
+stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 app = Flask(__name__, static_folder="frontend/build", static_url_path="/")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -38,16 +35,6 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
-
-# MPESA API Credentials
-MPESA_SHORTCODE = "174379"
-MPESA_PASSKEY = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919"
-MPESA_CONSUMER_KEY = "hV8s2GQfEjGfzEWq504mHkGbPm1FtpE2t7KI6asKuyEd50KS"
-MPESA_CONSUMER_SECRET = "WgNofqiscvyxmBxpTZFrEC5nF1nVfFDFBjtL01LlYhetWpANK9tfyaU8JsBiGlEi"
-MPESA_BASE_URL = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-MPESA_TOKEN_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-MPESA_CALLBACK_URL = "https://gbl-kenya-backend.onrender.com/stk_callback"
-
 
 CATEGORIES = [
     {
@@ -168,7 +155,7 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default='user')
     phonenumber = db.Column(db.String(15), unique=True, nullable=True)
     cart = db.relationship('Cart', backref='user', lazy=True)
-    orders = db.relationship('Order', backref='user', lazy=True)  # Relationship to Order
+
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -191,47 +178,7 @@ class Product(db.Model):
             'category': self.category,
             'subcategory': self.subcategory
         }
-class Order(db.Model):
-    __tablename__ = 'orders'
 
-    id = db.Column(db.String(50), primary_key=True)  # Unique order ID
-    user_id = db.Column(db.Integer, nullable=False)  # ID of the user who placed the order
-    total_amount = db.Column(db.Float, nullable=False)  # Total amount of the order
-    shipping_address = db.Column(db.String(200), nullable=False)  # Shipping address
-    full_name = db.Column(db.String(100), nullable=False)  # Full name of the customer
-    email = db.Column(db.String(100), nullable=False)  # Email of the customer
-    phone_number = db.Column(db.String(15), nullable=False)  # Phone number of the customer
-    city = db.Column(db.String(50), nullable=False)  # City of the customer
-    postal_code = db.Column(db.String(20), nullable=False)  # Postal code of the customer
-    country = db.Column(db.String(50), nullable=False)  # Country of the customer
-    status = db.Column(db.String(50), default='pending')  # Order status (e.g., pending, completed)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # Timestamp of order creation
-  # Relationship to User
-    user = db.relationship('User', backref='orders')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'user_id': self.user_id,
-            'total_amount': self.total_amount,
-            'shipping_address': self.shipping_address,
-            'full_name': self.full_name,
-            'email': self.email,
-            'phone_number': self.phone_number,
-            'city': self.city,
-            'postal_code': self.postal_code,
-            'country': self.country,
-            'status': self.status,
-            'created_at': self.created_at.isoformat(),
-            'client': {
-                'username': self.user.username,
-                'email': self.user.email,
-                'phone_number': self.user.phonenumber
-            } if self.user else None
-        }
-    def __repr__(self):
-        return f"<Order {self.id}>"
-    
 class Cart(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -245,7 +192,15 @@ class ActivityLog(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', backref=db.backref('activity_logs', lazy=True))
-
+    
+class Order(db.Model):
+    __tablename__ = 'orders'
+    id = db.Column(db.String(50), primary_key=True)  # Unique order ID
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # User who placed the order
+    total_amount = db.Column(db.Float, nullable=False)  # Total amount of the order
+    shipping_address = db.Column(db.String(200), nullable=False)  # Shipping address
+    status = db.Column(db.String(50), default='pending')  # Order status (e.g., pending, completed)
+    
 # JWT Helpers
 def generate_token(user):
     payload = {
@@ -288,61 +243,7 @@ def log_activity(user_id, action):
     db.session.add(new_log)
     db.session.commit()
 
-# Function to generate the password dynamically
-# Function to get a fresh MPESA access token
-def get_mpesa_token():
-    response = requests.get(MPESA_TOKEN_URL, auth=HTTPBasicAuth(MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET))
-    
-    if response.status_code == 200:
-        return response.json().get("access_token")
-    print("Error fetching token:", response.json())
-    return None
 
-# Function to generate the password dynamically
-def generate_password():
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    password_str = f"{MPESA_SHORTCODE}{MPESA_PASSKEY}{timestamp}"
-    password = base64.b64encode(password_str.encode()).decode()
-    return password, timestamp
-
-@app.route("/stk_push", methods=["POST"])
-def stk_push():
-    data = request.get_json()
-    phone_number = data.get("phone_number")
-    amount = data.get("amount")
-
-    if not phone_number or not amount:
-        return jsonify({"error": "Missing phone number or amount"}), 400
-
-    # Get a fresh MPESA token
-    token = get_mpesa_token()
-    if not token:
-        return jsonify({"error": "Failed to retrieve MPESA token"}), 500
-
-    password, timestamp = generate_password()
-    
-    payload = {
-        "BusinessShortCode": MPESA_SHORTCODE,
-        "Password": password,
-        "Timestamp": timestamp,
-        "TransactionType": "CustomerPayBillOnline",
-        "Amount": amount,
-        "PartyA": phone_number,
-        "PartyB": MPESA_SHORTCODE,
-        "PhoneNumber": phone_number,
-        "CallBackURL": MPESA_CALLBACK_URL,
-        "AccountReference": "CompanyXLTD",
-        "TransactionDesc": "Payment of X"
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-
-    response = requests.post(MPESA_BASE_URL, json=payload, headers=headers)
-
-    return jsonify(response.json()), response.status_code
 
 @app.route('/')
 def serve_index():
@@ -391,7 +292,61 @@ def signup():
     db.session.commit()
     
     return jsonify({'message': 'User created successfully'}), 201
+# Endpoint to create an order
+# Endpoint to create an order
+@app.route('/create-order', methods=['POST'])
+@token_required
+def create_order():
+    data = request.json
+    user_id = request.user['user_id']
 
+    # Validate required fields
+    if not all(k in data for k in ['total_amount', 'shipping_address', 'cartItems']):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Generate a unique order ID
+    order_id = f"order_{len(Order.query.all()) + 1}"
+
+    # Create a new order
+    new_order = Order(
+        id=order_id,
+        user_id=user_id,
+        total_amount=data['total_amount'],
+        shipping_address=data['shipping_address'],
+        status='pending'
+    )
+
+    db.session.add(new_order)
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Order created successfully',
+        'order_id': order_id
+    }), 201
+
+# Endpoint to create a payment intent with Stripe
+@app.route('/create-payment-intent', methods=['POST'])
+@token_required
+def create_payment_intent():
+    data = request.json
+
+    # Validate required fields
+    if not all(k in data for k in ['amount', 'currency']):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    try:
+        # Create a PaymentIntent with the order amount and currency
+        intent = stripe.PaymentIntent.create(
+            amount=int(data['amount']),  # Amount in cents
+            currency=data['currency'],
+        )
+
+        return jsonify({
+            'clientSecret': intent['client_secret']
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -637,119 +592,7 @@ def update_stock(id):
 
     return jsonify({'message': 'Stock updated successfully'}), 200
 
-@app.route('/orders', methods=['GET'])
-@admin_required
-def get_orders():
-    # Get query parameters
-    status = request.args.get('status')
-    user_id = request.args.get('user_id', type=int)  # Convert to integer
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
 
-    # Base query
-    query = Order.query.join(User).add_columns(
-        Order.id, Order.total_amount, Order.status, Order.created_at,
-        User.id.label("user_id"), User.username, User.email, User.phone
-    )
-
-    # Apply filters
-    if status:
-        query = query.filter(Order.status == status)
-    if user_id:
-        query = query.filter(Order.user_id == user_id)
-    if start_date and end_date:
-        try:
-            start_date = datetime.strptime(start_date, "%Y-%m-%d")
-            end_date = datetime.strptime(end_date, "%Y-%m-%d")
-            query = query.filter(Order.created_at.between(start_date, end_date))
-        except ValueError:
-            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
-
-    # Execute query
-    orders = query.all()
-
-    # Convert orders to JSON format
-    orders_data = [{
-        'order_id': order.id,
-        'total_amount': order.total_amount,
-        'status': order.status,
-        'created_at': order.created_at.strftime("%Y-%m-%d %H:%M:%S"),  # Format datetime
-        'user': {
-            'id': order.user_id,
-            'username': order.username,
-            'email': order.email,
-            'phone': order.phone
-        }
-    } for order in orders]
-
-    return jsonify(orders_data), 200
-
-@app.route('/orders/<order_id>/status', methods=['PUT'])
-@admin_required
-def update_order_status(order_id):
-    data = request.json
-    new_status = data.get('status')
-
-    if not new_status:
-        return jsonify({'error': 'Status is required'}), 400
-
-    order = Order.query.get_or_404(order_id)
-    order.status = new_status
-    db.session.commit()
-
-    return jsonify({'message': f'Order {order_id} status updated to {new_status}'}), 200
-
-@app.route('/create-order', methods=['POST'])
-@token_required
-def create_order():
-    data = request.json
-    user_id = request.user['user_id']
-
-    # Validate required fields
-    required_fields = [
-        'total_amount', 'shipping_address', 'full_name',
-        'email', 'phone_number', 'city', 'postal_code', 'country'
-    ]
-    if not all(field in data for field in required_fields):
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    # Generate a unique order ID
-    order_id = f"order_{len(Order.query.all()) + 1}"
-
-    # Create a new order
-    new_order = Order(
-        id=order_id,
-        user_id=user_id,
-        total_amount=data['total_amount'],
-        shipping_address=data['shipping_address'],
-        full_name=data['full_name'],
-        email=data['email'],
-        phone_number=data['phone_number'],
-        city=data['city'],
-        postal_code=data['postal_code'],
-        country=data['country'],
-        status='pending'
-    )
-
-    db.session.add(new_order)
-    db.session.commit()
-
-    return jsonify({
-        'message': 'Order created successfully',
-        'order_id': order_id
-    }), 201
-    
-@app.route('/sales-analytics', methods=['GET'])
-@admin_required
-def get_sales_analytics():
-    # Example: Total sales, top-selling products, etc.
-    total_sales = db.session.query(db.func.sum(Order.total_amount)).scalar() or 0
-    top_products = db.session.query(Product.name, db.func.sum(Order.total_amount)).join(Order).group_by(Product.name).order_by(db.func.sum(Order.total_amount).desc()).limit(5).all()
-
-    return jsonify({
-        'total_sales': total_sales,
-        'top_products': [{'name': name, 'total_sales': total} for name, total in top_products]
-    }), 200
 # Admin Seeder
 def create_admin_accounts():
     admins = [
