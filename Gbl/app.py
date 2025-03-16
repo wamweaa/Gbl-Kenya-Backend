@@ -186,6 +186,37 @@ class Cart(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     quantity = db.Column(db.Integer, default=1)
     
+class Order(db.Model):
+    __tablename__ = 'orders'
+
+    id = db.Column(db.String(50), primary_key=True)  # Unique order ID
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # ID of the user who placed the order
+    total_amount = db.Column(db.Float, nullable=False)  # Total amount of the order
+    shipping_address = db.Column(db.String(200), nullable=False)  # Shipping address
+    full_name = db.Column(db.String(100), nullable=False)  # Full name of the customer
+    email = db.Column(db.String(100), nullable=False)  # Email of the customer
+    phone_number = db.Column(db.String(15), nullable=False)  # Phone number of the customer
+    city = db.Column(db.String(50), nullable=False)  # City of the customer
+    postal_code = db.Column(db.String(20), nullable=False)  # Postal code of the customer
+    country = db.Column(db.String(50), nullable=False)  # Country of the customer
+    status = db.Column(db.String(50), default='pending')  # Order status (e.g., pending, completed)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # Timestamp of order creation
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'total_amount': self.total_amount,
+            'shipping_address': self.shipping_address,
+            'full_name': self.full_name,
+            'email': self.email,
+            'phone_number': self.phone_number,
+            'city': self.city,
+            'postal_code': self.postal_code,
+            'country': self.country,
+            'status': self.status,
+            'created_at': self.created_at.isoformat(),
+        }
 @app.route("/stk_push", methods=["POST"])
 def stk_push():
     data = request.get_json()
@@ -205,14 +236,7 @@ class ActivityLog(db.Model):
 
     user = db.relationship('User', backref=db.backref('activity_logs', lazy=True))
     
-class Order(db.Model):
-    __tablename__ = 'orders'
-    id = db.Column(db.String(50), primary_key=True)  # Unique order ID
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # User who placed the order
-    total_amount = db.Column(db.Float, nullable=False)  # Total amount of the order
-    shipping_address = db.Column(db.String(200), nullable=False)  # Shipping address
-    status = db.Column(db.String(50), default='pending')  # Order status (e.g., pending, completed)
-    
+
 # JWT Helpers
 def generate_token(user):
     payload = {
@@ -304,61 +328,7 @@ def signup():
     db.session.commit()
     
     return jsonify({'message': 'User created successfully'}), 201
-# Endpoint to create an order
-# Endpoint to create an order
-@app.route('/create-order', methods=['POST'])
-@token_required
-def create_order():
-    data = request.json
-    user_id = request.user['user_id']
 
-    # Validate required fields
-    if not all(k in data for k in ['total_amount', 'shipping_address', 'cartItems']):
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    # Generate a unique order ID
-    order_id = f"order_{len(Order.query.all()) + 1}"
-
-    # Create a new order
-    new_order = Order(
-        id=order_id,
-        user_id=user_id,
-        total_amount=data['total_amount'],
-        shipping_address=data['shipping_address'],
-        status='pending'
-    )
-
-    db.session.add(new_order)
-    db.session.commit()
-
-    return jsonify({
-        'message': 'Order created successfully',
-        'order_id': order_id
-    }), 201
-
-# Endpoint to create a payment intent with Stripe
-@app.route('/create-payment-intent', methods=['POST'])
-@token_required
-def create_payment_intent():
-    data = request.json
-
-    # Validate required fields
-    if not all(k in data for k in ['amount', 'currency']):
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    try:
-        # Create a PaymentIntent with the order amount and currency
-        intent = stripe.PaymentIntent.create(
-            amount=int(data['amount']),  # Amount in cents
-            currency=data['currency'],
-        )
-
-        return jsonify({
-            'clientSecret': intent['client_secret']
-        }), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -378,6 +348,80 @@ def get_user(user_id):
         'role': user.role,
         'phonenumber': user.phonenumber
     }), 200
+
+@app.route('/create-order', methods=['POST'])
+@token_required
+def create_order():
+    data = request.json
+    user_id = request.user['user_id']
+
+    # Validate required fields
+    required_fields = [
+        'total_amount', 'shipping_address', 'full_name',
+        'email', 'phone_number', 'city', 'postal_code', 'country'
+    ]
+    if not all(field in data for field in required_fields):
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    # Generate a unique order ID
+    order_id = f"order_{len(Order.query.all()) + 1}"
+
+    # Create a new order
+    new_order = Order(
+        id=order_id,
+        user_id=user_id,
+        total_amount=data['total_amount'],
+        shipping_address=data['shipping_address'],
+        full_name=data['full_name'],
+        email=data['email'],
+        phone_number=data['phone_number'],
+        city=data['city'],
+        postal_code=data['postal_code'],
+        country=data['country'],
+        status='pending'
+    )
+
+    db.session.add(new_order)
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Order created successfully',
+        'order_id': order_id
+    }), 201
+
+@app.route('/orders', methods=['GET'])
+@admin_required
+def get_orders():
+    # Get query parameters
+    status = request.args.get('status')
+    user_id = request.args.get('user_id', type=int)  # Convert to integer
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    # Base query
+    query = Order.query
+
+    # Apply filters
+    if status:
+        query = query.filter_by(status=status)
+    if user_id:
+        query = query.filter_by(user_id=user_id)
+    if start_date and end_date:
+        try:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date = datetime.strptime(end_date, "%Y-%m-%d")
+            query = query.filter(Order.created_at.between(start_date, end_date))
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
+    # Execute query
+    orders = query.all()
+
+    # Convert orders to JSON format
+    orders_data = [order.to_dict() for order in orders]
+
+    return jsonify(orders_data), 200
+
 @app.route('/users', methods=['GET'])
 @admin_required
 def get_users():
