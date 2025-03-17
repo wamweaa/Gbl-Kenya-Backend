@@ -162,7 +162,7 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=False)
     price = db.Column(db.Float, nullable=False)
-    image_url = db.Column(db.JSON)
+    image_url = db.Column(db.String(255))
     stock = db.Column(db.Integer, nullable=False, default=0)
     category = db.Column(db.String(50), nullable=False, default="Other")
     sales_count = db.Column(db.Integer, default=0)
@@ -594,33 +594,23 @@ def upload_file():
     return jsonify({'message': 'File uploaded successfully', 'url': result['secure_url']}), 201
 
 
-@app.route('/upload-images', methods=['POST'])
+@app.route('/upload-image', methods=['POST'])
 @admin_required
-def upload_images():
-    if 'images' not in request.files:
-        return jsonify({'error': 'No image files provided'}), 400
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image file provided'}), 400
 
-    files = request.files.getlist('images')
-    if not files:
-        return jsonify({'error': 'No selected files'}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
 
-    uploaded_urls = []
-    for file in files:
-        if file.filename == '':
-            continue  # Skip empty files
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type'}), 400
 
-        if not allowed_file(file.filename):
-            return jsonify({'error': f'Invalid file type: {file.filename}'}), 400
+    # Upload to Cloudinary
+    result = cloudinary.uploader.upload(file)
 
-        # Upload to Cloudinary
-        try:
-            result = cloudinary.uploader.upload(file)
-            uploaded_urls.append(result['secure_url'])
-        except Exception as e:
-            return jsonify({'error': f'Failed to upload {file.filename}: {str(e)}'}), 500
-
-    return jsonify({'message': 'Images uploaded successfully', 'image_urls': uploaded_urls}), 201
-
+    return jsonify({'message': 'Image uploaded successfully', 'image_url': result['secure_url']}), 201
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
