@@ -484,27 +484,27 @@ def add_product():
 
     return jsonify({'message': 'Product added successfully'}), 201
 
-@app.route('/products/<int:id>', methods=['PUT'])
-@admin_required
-def modify_product(id):
-    product = Product.query.get_or_404(id)
-    data = request.form
+# @app.route('/products/<int:id>', methods=['PUT'])
+# @admin_required
+# def modify_product(id):
+#     product = Product.query.get_or_404(id)
+#     data = request.form
 
-    for key, value in data.items():
-        setattr(product, key, value)
+#     for key, value in data.items():
+#         setattr(product, key, value)
 
-    # Handle multiple image uploads
-    if 'images' in request.files:
-        for file in request.files.getlist('images'):
-            if file and allowed_file(file.filename):
-                upload_result = cloudinary.uploader.upload(file)
-                image_url = upload_result.get('secure_url')
-                new_image = ProductImage(product_id=product.id, image_url=image_url)
-                db.session.add(new_image)
+#     # Handle multiple image uploads
+#     if 'images' in request.files:
+#         for file in request.files.getlist('images'):
+#             if file and allowed_file(file.filename):
+#                 upload_result = cloudinary.uploader.upload(file)
+#                 image_url = upload_result.get('secure_url')
+#                 new_image = ProductImage(product_id=product.id, image_url=image_url)
+#                 db.session.add(new_image)
     
-    db.session.commit()
+#     db.session.commit()
 
-    return jsonify({'message': 'Product updated successfully'}), 200
+#     return jsonify({'message': 'Product updated successfully'}), 200
 
 @app.route('/products/<int:id>', methods=['PUT', 'DELETE'])
 @admin_required
