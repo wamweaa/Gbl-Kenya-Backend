@@ -156,20 +156,17 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default='user')
     phonenumber = db.Column(db.String(15), unique=True, nullable=True)
     cart = db.relationship('Cart', backref='user', lazy=True)
-class ProductImage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    image_url = db.Column(db.String(255), nullable=False)
-    
+
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=False)
     price = db.Column(db.Float, nullable=False)
+    image_url = db.Column(db.String(255))
     stock = db.Column(db.Integer, nullable=False, default=0)
     category = db.Column(db.String(50), nullable=False, default="Other")
-    subcategory = db.Column(db.String(50), nullable=True)
-    images = db.relationship('ProductImage', backref='product', lazy=True)
+    sales_count = db.Column(db.Integer, default=0)
+    subcategory = db.Column(db.String(50), nullable=True)  # New field
 
     def to_dict(self):
         return {
@@ -177,10 +174,10 @@ class Product(db.Model):
             'name': self.name,
             'description': self.description,
             'price': self.price,
+            'image_url': self.image_url,
             'stock': self.stock,
             'category': self.category,
-            'subcategory': self.subcategory,
-            'images': [image.image_url for image in self.images]
+            'subcategory': self.subcategory
         }
 
 class Cart(db.Model):
@@ -459,52 +456,30 @@ def add_product():
     category = request.form.get('category', 'Other')
     subcategory = request.form.get('subcategory')
 
+    image_url = None
+
+    # Handle file upload
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and allowed_file(file.filename):
+            upload_result = cloudinary.uploader.upload(file)
+            image_url = upload_result.get('secure_url')  # Get the Cloudinary URL
+
+    # Create and save product
     new_product = Product(
         name=name,
         description=description,
         price=float(price),
         stock=int(stock),
         category=category,
-        subcategory=subcategory
+        subcategory=subcategory,
+        image_url=image_url  # Save image URL
     )
     
     db.session.add(new_product)
     db.session.commit()
 
-    # Handle multiple image uploads
-    if 'images' in request.files:
-        for file in request.files.getlist('images'):
-            if file and allowed_file(file.filename):
-                upload_result = cloudinary.uploader.upload(file)
-                image_url = upload_result.get('secure_url')
-                new_image = ProductImage(product_id=new_product.id, image_url=image_url)
-                db.session.add(new_image)
-    
-    db.session.commit()
-
     return jsonify({'message': 'Product added successfully'}), 201
-
-# @app.route('/products/<int:id>', methods=['PUT'])
-# @admin_required
-# def modify_product(id):
-#     product = Product.query.get_or_404(id)
-#     data = request.form
-
-#     for key, value in data.items():
-#         setattr(product, key, value)
-
-#     # Handle multiple image uploads
-#     if 'images' in request.files:
-#         for file in request.files.getlist('images'):
-#             if file and allowed_file(file.filename):
-#                 upload_result = cloudinary.uploader.upload(file)
-#                 image_url = upload_result.get('secure_url')
-#                 new_image = ProductImage(product_id=product.id, image_url=image_url)
-#                 db.session.add(new_image)
-    
-#     db.session.commit()
-
-#     return jsonify({'message': 'Product updated successfully'}), 200
 
 @app.route('/products/<int:id>', methods=['PUT', 'DELETE'])
 @admin_required
