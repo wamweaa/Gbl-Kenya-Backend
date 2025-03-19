@@ -23,7 +23,11 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
 app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://neondb_owner:npg_CmQ1eKcfbi7P@ep-bold-shape-a8sgvun3-pooler.eastus2.azure.neon.tech/neondb?sslmode=require"
-
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'pool_recycle': 300,  # Recycle connections after 5 minutes
+    'pool_timeout': 30
+}
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
 cloudinary.config(
@@ -589,7 +593,9 @@ def upload_file():
         return jsonify({'error': 'File type not allowed'}), 400
 
     # Upload to Cloudinary
-    result = cloudinary.uploader.upload(file)
+    result = cloudinary.uploader.upload(file, transformation=[
+    {'width': 500, 'height': 500, 'crop': 'limit'}
+])
 
     return jsonify({'message': 'File uploaded successfully', 'url': result['secure_url']}), 201
 
