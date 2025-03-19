@@ -160,17 +160,28 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default='user')
     phonenumber = db.Column(db.String(15), unique=True, nullable=True)
     cart = db.relationship('Cart', backref='user', lazy=True)
+    
+class ProductImage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    image_url = db.Column(db.String(255), nullable=False)
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'product_id': self.product_id,
+            'image_url': self.image_url
+        }
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=False)
     price = db.Column(db.Float, nullable=False)
-    image_url = db.Column(db.String(255))
     stock = db.Column(db.Integer, nullable=False, default=0)
     category = db.Column(db.String(50), nullable=False, default="Other")
     sales_count = db.Column(db.Integer, default=0)
-    subcategory = db.Column(db.String(50), nullable=True)  # New field
+    subcategory = db.Column(db.String(50), nullable=True)
+    images = db.relationship('ProductImage', backref='product', lazy=True)  # Relationship to ProductImage
 
     def to_dict(self):
         return {
@@ -178,10 +189,10 @@ class Product(db.Model):
             'name': self.name,
             'description': self.description,
             'price': self.price,
-            'image_url': self.image_url,
             'stock': self.stock,
             'category': self.category,
-            'subcategory': self.subcategory
+            'subcategory': self.subcategory,
+            'images': [image.to_dict() for image in self.images]  # Include images in the response
         }
 
 class Cart(db.Model):
@@ -460,15 +471,6 @@ def add_product():
     category = request.form.get('category', 'Other')
     subcategory = request.form.get('subcategory')
 
-    image_url = None
-
-    # Handle file upload
-    if 'image' in request.files:
-        file = request.files['image']
-        if file and allowed_file(file.filename):
-            upload_result = cloudinary.uploader.upload(file)
-            image_url = upload_result.get('secure_url')  # Get the Cloudinary URL
-
     # Create and save product
     new_product = Product(
         name=name,
@@ -476,14 +478,25 @@ def add_product():
         price=float(price),
         stock=int(stock),
         category=category,
-        subcategory=subcategory,
-        image_url=image_url  # Save image URL
+        subcategory=subcategory
     )
-    
     db.session.add(new_product)
     db.session.commit()
 
-    return jsonify({'message': 'Product added successfully'}), 201
+    # Handle multiple image uploads
+    if 'images' in request.files:
+        files = request.files.getlist('images')
+        for file in files:
+            if file and allowed_file(file.filename):
+                upload_result = cloudinary.uploader.upload(file)
+                image_url = upload_result.get('secure_url')  # Get the Cloudinary URL
+
+                # Save each image to the ProductImage table
+                new_image = ProductImage(product_id=new_product.id, image_url=image_url)
+                db.session.add(new_image)
+        db.session.commit()
+
+    return jsonify({'message': 'Product added successfully', 'product_id': new_product.id}), 201
 
 @app.route('/products/<int:id>', methods=['PUT', 'DELETE'])
 @admin_required
