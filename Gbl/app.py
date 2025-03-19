@@ -672,4 +672,4 @@ with app.app_context():
     # create_admin_accounts()
     
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)
