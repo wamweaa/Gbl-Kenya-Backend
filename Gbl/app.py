@@ -452,21 +452,30 @@ def list_products():
     category = request.args.get('category')
     page = request.args.get('page', default=1, type=int)
     per_page = request.args.get('per_page', default=10, type=int)
-    
+    fetch_all = request.args.get('all', default=False, type=lambda v: v.lower() == 'true')  # New parameter
+
     query = Product.query
     if category:
         query = query.filter_by(category=category)
-    
-    # Paginate the query
-    paginated_products = query.paginate(page=page, per_page=per_page, error_out=False)
-    
-    # Return the paginated results along with pagination metadata
-    return jsonify({
-        'products': [product.to_dict() for product in paginated_products.items],
-        'total_pages': paginated_products.pages,
-        'current_page': paginated_products.page,
-        'total_products': paginated_products.total
-    })
+
+    if fetch_all:
+        # Return all products without pagination
+        products = query.all()
+        return jsonify({
+            'products': [product.to_dict() for product in products],
+            'total_pages': 1,
+            'current_page': 1,
+            'total_products': len(products)
+        })
+    else:
+        # Paginate the query
+        paginated_products = query.paginate(page=page, per_page=per_page, error_out=False)
+        return jsonify({
+            'products': [product.to_dict() for product in paginated_products.items],
+            'total_pages': paginated_products.pages,
+            'current_page': paginated_products.page,
+            'total_products': paginated_products.total
+        })
     
 @app.route('/products/<int:id>', methods=['GET'])
 def get_product_by_id(id):
