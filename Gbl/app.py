@@ -450,12 +450,23 @@ def get_users():
 @app.route('/products', methods=['GET'])
 def list_products():
     category = request.args.get('category')
+    page = request.args.get('page', default=1, type=int)
+    per_page = request.args.get('per_page', default=12, type=int)
+    
     query = Product.query
+    
     if category:
         query = query.filter_by(category=category)
-    products = query.all()
-    return jsonify([product.to_dict() for product in products])
-
+    
+    products = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    return jsonify({
+        'products': [product.to_dict() for product in products.items],
+        'total_pages': products.pages,
+        'current_page': products.page,
+        'total_products': products.total
+    })
+    
 @app.route('/products/<int:id>', methods=['GET'])
 def get_product_by_id(id):
     product = Product.query.get_or_404(id)
