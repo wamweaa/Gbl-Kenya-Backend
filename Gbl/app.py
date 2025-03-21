@@ -504,22 +504,62 @@ def modify_product(id):
     product = Product.query.get_or_404(id)
 
     if request.method == 'PUT':
-        data = request.get_json()
-        for key, value in data.items():
-            setattr(product, key, value)
-        db.session.commit()
-        return jsonify({'message': 'Product updated successfully'}), 200
+        try:
+            # Handle form data
+            name = request.form.get('name')
+            description = request.form.get('description')
+            price = request.form.get('price')
+            stock = request.form.get('stock')
+            category = request.form.get('category')
+            subcategory = request.form.get('subcategory')
+
+            # Update product fields if provided
+            if name:
+                product.name = name
+            if description:
+                product.description = description
+            if price:
+                product.price = float(price)
+            if stock:
+                product.stock = int(stock)
+            if category:
+                product.category = category
+            if subcategory:
+                product.subcategory = subcategory
+
+            # Handle image uploads
+            if 'images' in request.files:
+                files = request.files.getlist('images')
+                for file in files:
+                    if file and allowed_file(file.filename):
+                        upload_result = cloudinary.uploader.upload(file)
+                        image_url = upload_result.get('secure_url')  # Cloudinary URL
+
+                        # Save the image to the ProductImage table
+                        new_image = ProductImage(product_id=product.id, image_url=image_url)
+                        db.session.add(new_image)
+
+            db.session.commit()
+            return jsonify({'message': 'Product updated successfully'}), 200
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': f'Failed to update product: {str(e)}'}), 500
 
     elif request.method == 'DELETE':
         try:
+            # Delete related images first to prevent foreign key issues
+            ProductImage.query.filter_by(product_id=id).delete()
+            
+            # Delete the product itself
             db.session.delete(product)
             db.session.commit()
             return jsonify({'message': 'Product deleted successfully'}), 200
+
         except Exception as e:
             db.session.rollback()
             print(f"Error deleting product {id}: {e}")
             return jsonify({'error': 'Failed to delete product'}), 500
-
 
 # Cart Routes
 @app.route('/cart', methods=['POST'])
