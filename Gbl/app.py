@@ -370,7 +370,7 @@ def create_order():
     data = request.json
     user_id = request.user['user_id']
 
-    # Validate required fields
+   
     required_fields = [
         'total_amount', 'shipping_address', 'full_name',
         'email', 'phone_number', 'city', 'postal_code', 'country'
@@ -378,10 +378,10 @@ def create_order():
     if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
 
-    # Generate a unique order ID
+   
     order_id = f"order_{len(Order.query.all()) + 1}"
 
-    # Create a new order
+
     new_order = Order(
         id=order_id,
         user_id=user_id,
@@ -407,16 +407,15 @@ def create_order():
 @app.route('/orders', methods=['GET'])
 @admin_required
 def get_orders():
-    # Get query parameters
+
     status = request.args.get('status')
-    user_id = request.args.get('user_id', type=int)  # Convert to integer
+    user_id = request.args.get('user_id', type=int) 
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
 
-    # Base query
+
     query = Order.query
 
-    # Apply filters
     if status:
         query = query.filter_by(status=status)
     if user_id:
@@ -429,37 +428,31 @@ def get_orders():
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
 
-    # Execute query
     orders = query.all()
 
-    # Convert orders to JSON format
     orders_data = [order.to_dict() for order in orders]
 
     return jsonify(orders_data), 200
 
-@app.route('/users', methods=['GET'])
-@admin_required
-def get_users():
-    users = User.query.all()
-    return jsonify([
-        {'id': user.id, 'username': user.username, 'role': user.role, 'phonenumber': user.phonenumber}
-        for user in users
-    ]), 200
-
-# Product Routes
 @app.route('/products', methods=['GET'])
 def list_products():
     category = request.args.get('category')
+    subcategory = request.args.get('subcategory')  # New parameter for subcategory
     page = request.args.get('page', default=1, type=int)
     per_page = request.args.get('per_page', default=10, type=int)
-    fetch_all = request.args.get('all', default=False, type=lambda v: v.lower() == 'true')  # New parameter
+    fetch_all = request.args.get('all', default=False, type=lambda v: v.lower() == 'true')
 
     query = Product.query
+    
+    # Filter by category if provided
     if category:
         query = query.filter_by(category=category)
+    
+    # Filter by subcategory if provided
+    if subcategory:
+        query = query.filter_by(subcategory=subcategory)
 
     if fetch_all:
-        # Return all products without pagination
         products = query.all()
         return jsonify({
             'products': [product.to_dict() for product in products],
@@ -468,7 +461,6 @@ def list_products():
             'total_products': len(products)
         })
     else:
-        # Paginate the query
         paginated_products = query.paginate(page=page, per_page=per_page, error_out=False)
         return jsonify({
             'products': [product.to_dict() for product in paginated_products.items],
@@ -476,6 +468,11 @@ def list_products():
             'current_page': paginated_products.page,
             'total_products': paginated_products.total
         })
+
+# Add a new endpoint to get categories with subcategories
+@app.route('/categories', methods=['GET'])
+def get_categories():
+    return jsonify(CATEGORIES), 200
     
 @app.route('/products/<int:id>', methods=['GET'])
 def get_product_by_id(id):
@@ -651,9 +648,7 @@ def update_cart_item(user_id, product_id):
     return jsonify({'message': 'Cart item updated'}), 200
 
 
-@app.route('/categories', methods=['GET'])
-def get_categories():
-    return jsonify(CATEGORIES), 200
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
