@@ -12,7 +12,6 @@ import cloudinary
 import cloudinary.uploader
 import stripe
 from mpesa import initiate_stk_push  # Import MPESA functions
-from sqlalchemy.orm import joinedload
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
@@ -437,14 +436,13 @@ def get_orders():
 
 @app.route('/products', methods=['GET'])
 def list_products():
-    query = Product.query.options(joinedload(Product.images))
     category = request.args.get('category')
     subcategory = request.args.get('subcategory')  # New parameter for subcategory
     page = request.args.get('page', default=1, type=int)
     per_page = request.args.get('per_page', default=10, type=int)
     fetch_all = request.args.get('all', default=False, type=lambda v: v.lower() == 'true')
 
-    # query = Product.query
+    query = Product.query
     
     # Filter by category if provided
     if category:
