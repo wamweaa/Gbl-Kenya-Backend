@@ -12,6 +12,7 @@ import cloudinary
 import cloudinary.uploader
 import stripe
 from mpesa import initiate_stk_push  # Import MPESA functions
+from sqlalchemy.orm import joinedload
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
@@ -24,9 +25,9 @@ app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
 app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://neondb_owner:npg_CmQ1eKcfbi7P@ep-bold-shape-a8sgvun3-pooler.eastus2.azure.neon.tech/neondb?sslmode=require"
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_size': 10,
+    'pool_size': 5,
     'pool_recycle': 300,  # Recycle connections after 5 minutes
-    'pool_timeout': 30
+    'pool_timeout': 10
 }
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
@@ -436,13 +437,14 @@ def get_orders():
 
 @app.route('/products', methods=['GET'])
 def list_products():
+    query = Product.query.options(joinedload(Product.images))
     category = request.args.get('category')
     subcategory = request.args.get('subcategory')  # New parameter for subcategory
     page = request.args.get('page', default=1, type=int)
     per_page = request.args.get('per_page', default=10, type=int)
     fetch_all = request.args.get('all', default=False, type=lambda v: v.lower() == 'true')
 
-    query = Product.query
+    # query = Product.query
     
     # Filter by category if provided
     if category:
